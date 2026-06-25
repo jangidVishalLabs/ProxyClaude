@@ -1,0 +1,49 @@
+[Unit]
+Description=ProxyClaude API (Fastify)
+Documentation=https://github.com/wisdmlabs/ProxyClaude
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+# Restart throttle window (these keys belong in [Unit], not [Service]).
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=proxyclaude
+Group=proxyclaude
+WorkingDirectory=/opt/proxyclaude/app
+
+# Secrets + DATABASE_URL live here (chmod 600, owned by proxyclaude). Never in git.
+EnvironmentFile=/opt/proxyclaude/app/.env
+
+# dist/ is built by deploy.sh (tsc). Node 22 resolves workspace deps from node_modules.
+ExecStart=/usr/bin/node packages/api/dist/index.js
+
+# Graceful: index.ts traps SIGTERM and calls app.close() before exit.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Restart-on-failure (production-readiness gate).
+Restart=on-failure
+RestartSec=3
+
+# Logs → journald (journalctl -u proxyclaude-api).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxyclaude-api
+
+# Hardening — API needs no special privileges.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/proxyclaude/app
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

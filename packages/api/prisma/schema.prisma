@@ -1,0 +1,166 @@
+// ProxyClaude data model (plan §3). Enums mirror @proxyclaude/shared.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DEVELOPER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum SshKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum SessionStatus {
+  ACTIVE
+  ENDED
+}
+
+enum ProvisionJobType {
+  WORKSPACE
+  KEY_INSTALL
+  KEY_REVOKE
+}
+
+enum ProvisionJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(DEVELOPER)
+  status       UserStatus @default(ACTIVE)
+  vpsUsername  String?    @unique
+  vpsHost      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  assignments   Assignment[]
+  sshKeys       SshKey[]
+  sessions      Session[]
+  refreshTokens RefreshToken[]
+  provisionJobs ProvisionJob[]
+
+  @@index([status])
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  repoUrl       String?
+  vpsPath       String
+  defaultBranch String   @default("main")
+  createdAt     DateTime @default(now())
+
+  assignments Assignment[]
+  sessions    Session[]
+}
+
+model Assignment {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+}
+
+model SshKey {
+  id          String       @id @default(cuid())
+  userId      String
+  publicKey   String
+  fingerprint String       @unique
+  status      SshKeyStatus @default(ACTIVE)
+  installedAt DateTime?
+  createdAt   DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id         String        @id @default(cuid())
+  userId     String
+  projectId  String
+  tmuxName   String
+  status     SessionStatus @default(ACTIVE)
+  lastSeenAt DateTime      @default(now())
+  createdAt  DateTime      @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  action      String
+  actorUserId String?
+  targetType  String?
+  targetId    String?
+  ip          String?
+  userAgent   String?
+  result      AuditResult @default(SUCCESS)
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model ProvisionJob {
+  id        String             @id @default(cuid())
+  userId    String
+  type      ProvisionJobType
+  status    ProvisionJobStatus @default(PENDING)
+  error     String?
+  attempts  Int                @default(0)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}

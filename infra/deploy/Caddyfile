@@ -1,0 +1,22 @@
+# ProxyClaude reverse proxy — automatic HTTPS (Let's Encrypt) + HTTP→HTTPS redirect.
+# Caddy listens on :80 and :443; redirect to HTTPS is automatic.
+# The API itself binds 0.0.0.0:3000 but should be firewalled to localhost in prod;
+# only Caddy is public. Replace api.example.com with the real FQDN before deploy.
+
+api.example.com {
+	# Terminate TLS here and forward to the local Fastify process.
+	reverse_proxy 127.0.0.1:3000
+
+	# HSTS is also set by @fastify/helmet, but enforce at the edge too.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Strip server fingerprinting.
+	header -Server
+
+	encode gzip zstd
+
+	log {
+		output file /var/log/caddy/proxyclaude.log
+		format json
+	}
+}

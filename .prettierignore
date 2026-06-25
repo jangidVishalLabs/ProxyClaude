@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.turbo
+coverage
+pnpm-lock.yaml
+ProxyClaude_CostReduction_Proposal.md
+plan.md
+.claude
+**/migrations/**

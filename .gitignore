@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+
+# env / secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_ed25519*
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+Thumbs.db
+*Zone.Identifier
+.idea/
+.vscode/
+
+# prisma local
+packages/api/prisma/*.db

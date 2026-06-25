@@ -1,0 +1,30 @@
+{
+  "name": "@proxyclaude/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "proxyclaude": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:standalone": "rm -rf dist && node scripts/bundle.mjs",
+    "prepack": "pnpm run build:standalone",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "comment": "commander/zod/@proxyclaude/shared are devDependencies on purpose: build:standalone bundles them into dist/index.js via esbuild, so the packed tarball has NO runtime deps and installs cleanly with `npm i -g`.",
+  "devDependencies": {
+    "@proxyclaude/shared": "workspace:*",
+    "@types/node": "^22.10.5",
+    "commander": "^13.0.0",
+    "esbuild": "^0.24.2",
+    "vitest": "^2.1.8",
+    "zod": "^3.24.1"
+  }
+}

@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: proxyclaude
+          POSTGRES_PASSWORD: proxyclaude
+          POSTGRES_DB: proxyclaude_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proxyclaude"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL_TEST: postgresql://proxyclaude:proxyclaude@localhost:5432/proxyclaude_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @proxyclaude/api exec prisma generate
+
+      - name: Migrate test database
+        run: pnpm --filter @proxyclaude/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL_TEST }}
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+  infra:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: proxyclaude
+          POSTGRES_PASSWORD: proxyclaude
+          POSTGRES_DB: proxyclaude_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proxyclaude"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck infra scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck infra/vps/*.sh infra/db/*.sh infra/deploy/*.sh
+
+      - name: Install postgresql-client 16 (match server)
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Backup + restore round-trip
+        env:
+          PGPASSWORD: proxyclaude
+          DATABASE_URL: postgresql://proxyclaude:proxyclaude@localhost:5432/proxyclaude_test
+        run: |
+          set -euo pipefail
+          PGB="-h localhost -U proxyclaude"
+          # Seed a canary table (no app schema needed for the dump round-trip).
+          psql $PGB -d proxyclaude_test -q \
+            -c "CREATE TABLE IF NOT EXISTS canary(email text primary key);" \
+            -c "INSERT INTO canary VALUES ('canary@x.com') ON CONFLICT DO NOTHING;"
+          # Backup the live DB.
+          BACKUP_DIR=/tmp/bk APP_DIR=. bash infra/db/backup.sh ci-stamp
+          DUMP=$(ls /tmp/bk/proxyclaude-*.dump)
+          # Restore into a fresh DB and verify the canary survived.
+          dropdb $PGB --if-exists ci_restore
+          createdb $PGB ci_restore
+          bash infra/db/restore.sh "$DUMP" "postgresql://proxyclaude:proxyclaude@localhost:5432/ci_restore"
+          N=$(psql $PGB -d ci_restore -tAc "SELECT count(*) FROM canary WHERE email='canary@x.com';" | tr -d '[:space:]')
+          test "$N" = "1" && echo "OK: backup/restore round-trip verified"
